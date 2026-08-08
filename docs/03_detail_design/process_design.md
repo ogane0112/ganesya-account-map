@@ -1,12 +1,21 @@
 # 処理定義書(詳細設計)
 
-- 版数: v1.0
-- 作成日: 2026-08-08
+- 版数: v1.1(実装フェーズでの構成見直しを反映)
+- 作成日: 2026-08-08 / 改訂日: 2026-08-08
 - 関連: [DB設計書](../02_basic_design/db_design.md), [画面定義書](../02_basic_design/screen_design.md)
+
+### 改訂履歴
+
+| 版数 | 内容 |
+|---|---|
+| v1.0 | 初版。ドメインロジックを `functions/lib/` に配置し、フロントエンド側は一部を `src/lib/` に重複実装する方針とした |
+| v1.1 | 実装着手時に、フロントエンド(`src/`)とバックエンド(`functions/`)の両方から参照する純粋なドメインロジック(バリデーション/集計/グラフ探索/エクスポート整形)は重複を避けて `shared/` ディレクトリに一本化する方針へ変更。Cloudflareランタイム固有のD1アクセス処理のみ `functions/lib/db.ts` に残す |
 
 ## 1. API一覧
 
 すべてCloudflare Pages Functions(`functions/api/`配下)として実装する。レスポンスは`application/json`。
+ドメインロジック本体は `shared/` 配下の純粋関数として実装し、`functions/api/*.ts` はHTTPハンドラとして
+`shared/*` と `functions/lib/db.ts`(D1アクセス)を呼び出すだけの薄い層とする。
 
 | # | メソッド | パス | 概要 | 実装ファイル |
 |---|---|---|---|---|
@@ -25,7 +34,7 @@
 | 13 | GET | `/api/export?format=json\|csv` | 全データエクスポート | `functions/api/export.ts` |
 
 すべての一覧・変更系APIはドメインロジック(バリデーション・集計・グラフ用データ整形)を
-`functions/lib/`配下の純粋関数として切り出し、Pages Functionsのハンドラから呼び出す構成とする。
+`shared/`配下の純粋関数として切り出し、Pages Functionsのハンドラから呼び出す構成とする。
 これにより、Cloudflareランタイムに依存しないロジック単体をvitestでユニットテストできるようにする
 ([テスト計画書](../04_test/test_plan.md)参照)。
 
@@ -39,7 +48,7 @@
     ▼
 POST /api/accounts
     │
-    ├─ 1. バリデーション (functions/lib/validation.ts: validateAccountInput)
+    ├─ 1. バリデーション (shared/validation.ts: validateAccountInput)
     │     - service_name 必須
     │     - status が許可値のいずれかであること
     │     - ログイン方式ごとに type別必須項目チェック
@@ -80,7 +89,7 @@ GET /api/accounts/:id
 GET /api/dashboard
     │
     ├─ 1. accounts 全件取得
-    ├─ 2. functions/lib/dashboard.ts: buildDashboardSummary(accounts, now, thresholds) で集計
+    ├─ 2. shared/dashboard.ts: buildDashboardSummary(accounts, now, thresholds) で集計
     │     - ステータス別件数
     │     - 休眠判定: status !== '解約済み' かつ
     │       last_login_at が null、または now - last_login_at >= dormantThresholdDays(既定180日)
@@ -102,14 +111,14 @@ POST /api/relations
     │     - parent_account_id と child_account_id が共に存在するaccountsか
     │     - parent_account_id !== child_account_id (自己ループ禁止)
     │     - 循環参照チェック: child側から親方向に辿って parent_account_id に到達しないか
-    │       (functions/lib/graph.ts: wouldCreateCycle)
+    │       (shared/graph.ts: wouldCreateCycle)
     │     - 循環になる場合は422エラー「循環した紐づけは登録できません」
     └─ 2. relations へ INSERT し201で返却
 ```
 
 ### 2.5 紐づけ関係Graphレイアウト処理(フロントエンド)
 
-SC-05(紐づけ関係図)は外部グラフ描画ライブラリを使わず、`src/lib/graphLayout.ts` の
+SC-05(紐づけ関係図)は外部グラフ描画ライブラリを使わず、`shared/graphLayout.ts` の
 純粋関数でノード座標を計算し、Reactコンポーネント側でSVGとして描画する。
 
 ```
@@ -123,9 +132,9 @@ SC-05(紐づけ関係図)は外部グラフ描画ライブラリを使わず、`
     └─ 5. { nodes: [{id, x, y}], edges: [{from, to}] } を返却
 ```
 
-逆引き(祖先/子孫)表示は `functions/lib/graph.ts` の `getAncestors` / `getDescendants` を
-フロントエンドと共通のロジックとして `src/lib` にも同等実装を持つ(小規模なため重複実装を許容し、
-グラフ操作のためだけに状態管理ライブラリを追加しない方針とする)。
+逆引き(祖先/子孫)表示は `shared/graph.ts` の `getAncestors` / `getDescendants` を
+フロントエンド(紐づけ関係図画面)・バックエンド(循環参照チェック)の双方から共通利用する。
+グラフ操作のためだけに状態管理ライブラリを追加しない方針は変更しない。
 
 ### 2.6 マスターパスワードロック処理
 
@@ -157,13 +166,13 @@ hashPassword(input) と localStorage の lockHash を比較
 GET /api/export?format=json
     │
     ├─ 1. accounts, login_methods, relations, tags, account_tags を全件取得
-    ├─ 2. functions/lib/export.ts: toExportJson() で1つのJSONにまとめる
+    ├─ 2. shared/export.ts: toExportJson() で1つのJSONにまとめる
     └─ 3. Content-Disposition: attachment 付きで返却
 
 GET /api/export?format=csv
     │
     ├─ 1. accounts を取得し、ログイン方式は1行にカンマ区切りで要約
-    ├─ 2. functions/lib/export.ts: toExportCsv() でCSV文字列生成(RFC4180準拠のクォート処理)
+    ├─ 2. shared/export.ts: toExportCsv() でCSV文字列生成(RFC4180準拠のクォート処理)
     └─ 3. Content-Type: text/csv で返却
 ```
 

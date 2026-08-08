@@ -1,0 +1,17 @@
+name = "ganesya-account-map"
+compatibility_date = "2026-08-08"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "dist"
+
+# 本番環境(mainブランチのデプロイ)で使用するD1バインディング。
+# database_id は `wrangler d1 create account_map_db` 実行後に発行されるIDに置き換えること。
+# 実際の値は docs/05_release/deployment_guide.md の手順に従って設定する。
+[[d1_databases]]
+binding = "ACCOUNT_DB"
+database_name = "account_map_db"
+database_id = "REPLACE_WITH_PRODUCTION_D1_DATABASE_ID"
+
+# プレビューデプロイ(main以外のブランチ)用のD1バインディング。
+# Cloudflare Pagesのダッシュボード上の「Settings > Functions > D1 database bindings」で
+# Preview環境に対して `account_map_db_preview` を個別に割り当てる運用とする
+# (Pagesのプレビュー環境バインディングはwrangler.tomlの[env]では表現できないため)。
