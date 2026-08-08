@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    # 自動マージは行わない(docs/02_basic_design/infra_design.md 8章の方針)。
+    # 提案されたPRの脆弱性情報・変更内容を確認してから手動でマージする。
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

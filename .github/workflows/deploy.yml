@@ -1,0 +1,52 @@
+name: Deploy
+
+# CIワークフローがmainブランチで成功した場合にのみ起動する。
+# (docs/03_detail_design/ci_cd_design.md 2章・5章の「CI成功後にデプロイ」フローに対応)
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy:
+    name: Cloudflare Pagesへデプロイ
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    steps:
+      - name: Checkout (CIが検証したコミットをそのまま使用)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (src/ のみをビルドし、docs/やtests/は成果物に含まれない)
+        run: pnpm build
+
+      - name: Verify build artifact excludes docs/tests
+        run: pnpm lint:deploy-artifact
+
+      - name: Apply D1 migrations
+        run: pnpm exec wrangler d1 migrations apply account_map_db --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy to Cloudflare Pages
+        run: pnpm exec wrangler pages deploy dist --project-name=ganesya-account-map --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
