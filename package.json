@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.functions.json",
+    "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.functions.json && tsc --noEmit -p tsconfig.test.json",
     "test": "vitest",
     "test:run": "vitest run",
     "lint:deploy-artifact": "node scripts/check-dist-excludes-docs.mjs"
@@ -21,6 +21,7 @@
     "@cloudflare/workers-types": "^5.20260808.1",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
+    "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
